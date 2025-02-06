@@ -96,3 +96,8 @@ def callback(station_MTID: str = Depends(JWT.verify_JWT_token)):
 def protected_route(current_user: str = Depends(JWT.verify_jwt)):
     print("protected")
     return {"message": f"Hello, {current_user}. You have accessed a protected route."}
+
+@app.get("/upload_data")
+def upload_data(data):
+    print("get data: ", data)
+    return [f"get data {data}"]
