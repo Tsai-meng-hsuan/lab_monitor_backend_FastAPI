@@ -1,5 +1,9 @@
+#FastAPI用的套件
 requests
 fastapi
 uvicorn
-python-dotenv
 python-jose
+
+#postgreSQL用的套件
+python-dotenv
+psycopg2
