@@ -6,10 +6,8 @@ from fastapi import HTTPException, Depends
 from postgreSQL import DB_function
 from typing import List, Optional, Annotated
 from fastapi import Query
+from datetime import datetime, timedelta
 # from .. import models
-
-
-
 
 
 
@@ -97,7 +95,11 @@ def DB_fetch(sql_str: str, params: Annotated[list[str], Query()] = None ):
 
 @app.get("/DB_modify")
 def DB_modify(sql_str: str, params: Annotated[list[str], Query()] = None ):
-    # print(params)
+    print(type(sql_str), type(params))
+    now_time = datetime.now()
+    params.insert(0, now_time)
+    print(sql_str)
+    print(params)
     result = DB_function.DB_modify(sql_str, params)
     print(result)
     return result
