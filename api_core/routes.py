@@ -106,6 +106,18 @@ def DB_modify(sql_str: str, params: Annotated[list[str], Query()] = None ):
     return result
 
 
+@app.get("/DB_insert_TM")
+def DB_insert_TM(sql_str: str, temperature: str, moisture: str):
+    print(sql_str, temperature, moisture)
+    now_time = datetime.now()
+    params = [now_time, temperature, moisture]
+    print(sql_str)
+    print(params)
+    result = DB_function.DB_modify(sql_str, params)
+    print(result)
+    return result
+
+
 @app.get("/test_output", tags=["系統測試"], summary="JWT測試")
 def callback(station_MTID: str = Depends(JWT.verify_JWT_token)):
     return {"status": "success"}
