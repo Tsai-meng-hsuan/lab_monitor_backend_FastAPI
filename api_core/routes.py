@@ -96,8 +96,9 @@ def DB_fetch(sql_str: str, params: Annotated[list[str], Query()] = None ):
 @app.get("/DB_modify")
 def DB_modify(sql_str: str, params: Annotated[list[str], Query()] = None ):
     print(type(sql_str), type(params))
-    now_time = datetime.now()
-    params.insert(0, now_time)
+    if params:
+        now_time = datetime.now()
+        params.insert(0, now_time)
     print(sql_str)
     print(params)
     result = DB_function.DB_modify(sql_str, params)
