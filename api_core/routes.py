@@ -1,22 +1,22 @@
-# from typing import List
 # from .security import Depends, get_login_jwt_token, verify_credentials
 from . import app
 from . import JWT
 from pydantic import BaseModel
 from fastapi import HTTPException, Depends
+from postgreSQL import DB_function
+from typing import List, Optional, Annotated
+from fastapi import Query
+from datetime import datetime, timedelta
 # from .. import models
 
 
 
-
-
-# 降雨底圖
 @app.get("/login_get", tags=["會員登入查詢"], summary="查資料庫會員資料_get")
 def callback(station_MTID: str):
     return {"status": "success"}
 
 
-# 定義請求體結構
+# POST方法定義請求體結構
 class LoginRequest(BaseModel):
     name: str
     password: str
@@ -87,6 +87,24 @@ def callback():
     ]
 
 
+@app.get("/DB_fetch")
+def DB_fetch(sql_str: str, params: Annotated[list[str], Query()] = None ):
+    rows = DB_function.DB_fetch(sql_str, params)
+    print(rows)
+
+
+@app.get("/DB_modify")
+def DB_modify(sql_str: str, params: Annotated[list[str], Query()] = None ):
+    print(type(sql_str), type(params))
+    now_time = datetime.now()
+    params.insert(0, now_time)
+    print(sql_str)
+    print(params)
+    result = DB_function.DB_modify(sql_str, params)
+    print(result)
+    return result
+
+
 @app.get("/test_output", tags=["系統測試"], summary="JWT測試")
 def callback(station_MTID: str = Depends(JWT.verify_JWT_token)):
     return {"status": "success"}
@@ -97,7 +115,3 @@ def protected_route(current_user: str = Depends(JWT.verify_jwt)):
     print("protected")
     return {"message": f"Hello, {current_user}. You have accessed a protected route."}
 
-@app.get("/upload_data")
-def upload_data(data):
-    print("get data: ", data)
-    return [f"get data {data}"]
