@@ -106,16 +106,23 @@ def DB_modify(sql_str: str, params: Annotated[list[str], Query()] = None ):
     return result
 
 
-@app.get("/DB_insert_TM")
-def DB_insert_TM(sql_str: str, temperature: str, moisture: str):
-    print(sql_str, temperature, moisture)
+@app.get("/get_sensor_data")
+def get_sensor_data(data: str):
+    print(data)
+    temp_dict = {}
     now_time = datetime.now()
-    params = [now_time, temperature, moisture]
-    print(sql_str)
-    print(params)
-    result = DB_function.DB_modify(sql_str, params)
-    print(result)
-    return result
+    data_list = data.split(",")
+    print(data_list)
+    for one_data in data_list:
+        temp_dict[one_data.split("_")[0]] = one_data.split("_")[1]
+    print(temp_dict)
+    
+    # params = [now_time, temperature, moisture]
+    # print(sql_str)
+    # print(params)
+    # result = DB_function.DB_modify(sql_str, params)
+    # print(result)
+    # return result
 
 
 @app.get("/test_output", tags=["系統測試"], summary="JWT測試")
