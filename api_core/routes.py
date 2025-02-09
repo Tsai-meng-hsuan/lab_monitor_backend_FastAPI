@@ -106,23 +106,24 @@ def DB_modify(sql_str: str, params: Annotated[list[str], Query()] = None ):
     return result
 
 
+# ESP32的GET方式好像只能傳單一參數，只好在感測器端以STR回傳，進行後續字串處理
 @app.get("/get_sensor_data")
 def get_sensor_data(data: str):
     print(data)
     temp_dict = {}
     now_time = datetime.now()
     data_list = data.split(",")
-    print(data_list)
     for one_data in data_list:
         temp_dict[one_data.split("_")[0]] = one_data.split("_")[1]
-    print(temp_dict)
     
-    # params = [now_time, temperature, moisture]
-    # print(sql_str)
-    # print(params)
-    # result = DB_function.DB_modify(sql_str, params)
-    # print(result)
-    # return result
+    sql_str = """INSERT INTO public.temperature_moisture_monitor(
+                time, temperature, moisture)
+                VALUES (%s, %s, %s);"""
+    
+    params = [now_time, temp_dict["temperature"], temp_dict["moisture"]]
+    result = DB_function.DB_modify(sql_str, params)
+    print(result)
+    return result
 
 
 @app.get("/test_output", tags=["系統測試"], summary="JWT測試")
