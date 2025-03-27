@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 import psycopg2
+from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 
 # load_dotenv()
@@ -29,8 +30,8 @@ def DB_fetch(sql_str, *params: tuple):
     # 取得資料庫配置
     DB_config_dict = get_DB_config()
     conn = psycopg2.connect(**DB_config_dict)
-    # 創建游標對象
-    cur = conn.cursor()
+    # 使用字典游標執行查詢(DB以字典回傳，方便後續程式編輯)
+    cur = conn.cursor(cursor_factory=RealDictCursor)
     # 執行查詢，將 sql_str 和 params 分開傳入
     cur.execute(sql_str, params)
     # 獲取查詢結果
