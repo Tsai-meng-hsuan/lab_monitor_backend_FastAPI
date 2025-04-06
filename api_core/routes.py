@@ -3,12 +3,19 @@ from . import app
 from . import JWT
 from pydantic import BaseModel
 from fastapi import HTTPException, Depends
-from postgreSQL import DB_function
 from typing import List, Optional, Annotated
 from fastapi import Query
+from fastapi import File, UploadFile, Form
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 from postgreSQL import DB_function
 # from .. import models
+
+import pandas as pd
+import io
+
+
 
 
 @app.get("/", tags=["根目錄"], summary="根目錄")
@@ -205,3 +212,91 @@ def protected_route(current_user: str = Depends(JWT.verify_jwt)):
     print("protected")
     return {"message": f"Hello, {current_user}. You have accessed a protected route."}
 
+
+@app.post("/data_analyze/init_data_upload")
+async def upload_file(file: UploadFile = File(...), pipeline_id: int = Form(...)):
+    try:
+        content = await file.read() # 這是前端二進制資料
+        df = pd.read_csv(io.StringIO(content.decode("utf-8")))
+        # ✅ 清理數據 (例如去除空白、處理 NaN)
+        df = df.dropna().reset_index(drop=True)  # 移除空值並重置索引
+        df.columns = df.columns.str.strip()  # 清除欄位名稱的空白
+        header_list = df.columns.tolist()   # 取得標頭
+        header_list = [header.lower() for header in header_list]    # PostgreSQL 欄位名稱是小寫敏感，除非加上雙引號（"）
+        column_settings = {}
+        # 建立資料標頭與資料型態對照字典
+        for one_header in header_list:
+            column_settings[one_header.lower()] = "character varying"
+
+        table_name = f'public."pipeline_{pipeline_id}_process_0"'
+        DB_function.creat_table(table_name, **column_settings)  # 先建立table
+        
+        # 將 DataFrame 轉換成 tuples 並使用 execute_values 批次插入
+        init_data_list = list(df.itertuples(index=False, name=None))
+        DB_function.DB_batch_insert(table_name, header_list, init_data_list)    # 在插入數據
+        
+        # ✅ 轉換為 JSON 格式
+        # json_data = df.to_dict(orient="records")
+        # 這邊設定回傳給前端的資料
+        content = {
+            "message": f"檔案 {file.filename} 上傳成功",
+            # "data": json_data  # 傳回清理後的資料
+        }
+
+        return JSONResponse(content=content, status_code=200)
+    except Exception as e:
+        print(e)
+        return JSONResponse(content={"message": str(e)}, status_code=500)
+    
+
+@app.post("/data_analyze/json_process")
+async def json_process(request: Request):
+    try:
+        # 讀取前端傳來的 JSON 資料
+        json_process_data = await request.json()
+        pipeline_id = json_process_data["pipeline_id"]
+        process_step = json_process_data["step"]
+        process_type = json_process_data["process_type"]
+        process_parameter = json_process_data["process_parameter"]
+        
+
+        # 先取得上一步驟的資料
+        table_name = f"public.pipeline_{pipeline_id}_process_{process_step-1}"  
+        sql_str = f"SELECT * FROM {table_name}"  # 要加上 FROM 關鍵字
+        result = await DB_function.DB_fetch(sql_str)
+        df = pd.DataFrame(result)
+
+        # 再建立新的table
+        header_list = df.columns.tolist()   # 取得標頭
+        header_list = [header.lower() for header in header_list]    # PostgreSQL 欄位名稱是小寫敏感，除非加上雙引號（"）
+        column_settings = {}
+        # 建立資料標頭與資料型態對照字典
+        for one_header in header_list:
+            column_settings[one_header.lower()] = "character varying"
+
+        table_name = f'public."pipeline_{pipeline_id}_process_{process_step}"'
+        DB_function.creat_table(table_name, **column_settings)  
+
+        # 最後將 DataFrame 轉換成 tuples 並使用 execute_values 批次插入
+        init_data_list = list(df.itertuples(index=False, name=None))
+        DB_function.DB_batch_insert(table_name, header_list, init_data_list)    # 在插入數據
+
+        # 將 JSON 資料轉為 DataFrame
+        # df = pd.DataFrame(json_data)
+
+        # # ✅ 數據清理
+        # df = df.dropna().reset_index(drop=True)  # 移除空值
+        # df.columns = df.columns.str.strip()      # 去除欄位名稱空白
+        # print("清理後的 DataFrame：", df)
+
+        # # ✅ 再轉回 JSON
+        # cleaned_json = df.to_dict(orient="records")
+
+        # return JSONResponse(content={
+        #     "message": "JSON 資料處理成功",
+        #     "data": cleaned_json
+        # }, status_code=200)
+
+    except Exception as e:
+        print("錯誤：", e)
+        return JSONResponse(content={"message": str(e)}, status_code=500)

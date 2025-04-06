@@ -3,6 +3,8 @@ requests
 fastapi
 uvicorn
 python-jose
+python-multipart #這是fastapi form-data文件需要的套件
+pandas
 
 #postgreSQL用的套件
 python-dotenv
