@@ -27,7 +27,7 @@ def get_DB_config():
     return DB_config_dict
 
 
-async def  DB_fetch(sql_str, *params: tuple):
+def  DB_fetch(sql_str, *params: tuple):
     # 取得資料庫配置
     DB_config_dict = get_DB_config()
     conn = psycopg2.connect(**DB_config_dict)

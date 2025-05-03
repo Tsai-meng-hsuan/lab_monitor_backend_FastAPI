@@ -14,8 +14,46 @@ from postgreSQL import DB_function
 
 import pandas as pd
 import io
+import json
 
 
+def topological_sort(nodes, edges):
+    # 建立節點入度與鄰接圖
+    in_degree = {}
+    graph = {}
+
+    # 初始化，在in_degree、graph字典中加入所有節點
+    for node in nodes:
+        node_id = node["id"]
+        in_degree[node_id] = 0
+        graph[node_id] = [] # graph為list，儲存每個node的下一個節點ID
+
+    # 填入邊的資訊，注意這邊的source、target其實就是node的id
+    for edge in edges:
+        source = edge["source"]
+        target = edge["target"]
+        graph[source].append(target)    # 以<邊>為單位，建立每一個node的對應關係list(graph[source]),EX: graph[0] = [1,2,5]
+        in_degree[target] += 1  # 計算入度累加，EX: in_degree[1] = 1, in_degree[2] = 1, in_degree[5] = 1
+
+    # 找出入度為 0 的節點
+    queue = [node_id for node_id in in_degree if in_degree[node_id] == 0]
+    sorted_nodes = []
+
+    # 拓撲排序主迴圈，持續執行直到queue中沒有資料
+    while queue:
+        node = queue.pop(0)  # 取出第一個元素（index 0），並從列表中移除它，模擬 queue（效率不如 deque，但可用）
+        sorted_nodes.append(node) # 將當前節點加入排序結果
+
+        for neighbor in graph[node]:    # EX: graph[0] = [1,2,5]
+            in_degree[neighbor] -= 1    # 對下一個節點的degree進行遞減
+            if in_degree[neighbor] == 0:    # 若下一個節點的degree為0，則由後方加入queue list中，保證先入先出的順序
+                queue.append(neighbor)
+
+    # 檢查是否有循環（即無法排序完整，最終只輸出一個序列的list，且必須包含所有的node
+    if len(sorted_nodes) != len(nodes):
+        raise ValueError("圖中有循環，無法進行拓撲排序")
+
+    return sorted_nodes
 
 
 @app.get("/", tags=["根目錄"], summary="根目錄")
@@ -263,7 +301,7 @@ async def json_process(request: Request):
         # 先取得上一步驟的資料
         table_name = f"public.pipeline_{pipeline_id}_process_{process_step-1}"  
         sql_str = f"SELECT * FROM {table_name}"  # 要加上 FROM 關鍵字
-        result = await DB_function.DB_fetch(sql_str)
+        result = DB_function.DB_fetch(sql_str)
         df = pd.DataFrame(result)
 
         # 再建立新的table
@@ -299,4 +337,93 @@ async def json_process(request: Request):
 
     except Exception as e:
         print("錯誤：", e)
+        return JSONResponse(content={"message": str(e)}, status_code=500)
+    
+
+@app.post("/data_analyze/run_process")
+async def upload_data(
+    nodes: str = Form(...),
+    edges: str = Form(...),
+    file_node_id: str = Form(...),
+    csv_files: List[UploadFile] = File(...)
+    ):
+
+    # 將 JSON 字串解析成 Python 物件
+    node_data = json.loads(nodes)
+    edge_data = json.loads(edges)
+    print("file node ID: ", file_node_id)
+    for one_node in node_data:
+        print(one_node["data"]["label"])
+        print(one_node["type"])
+        print(30*"=")
+    
+    for one_edge in edge_data:
+        print(one_edge["id"])
+        print(one_edge["source"])
+        print(one_edge["target"])
+        print(30*"=")
+    
+    # 處理 CSV 檔案
+    csv_contents = []
+    for file in csv_files:
+        content = await file.read()
+        csv_contents.append({
+            "filename": file.filename,
+            "content": content.decode("utf-8")
+        })
+
+    for one_csv in csv_contents:
+        filename = one_csv["filename"]
+        content = one_csv["content"]
+        # 使用 StringIO 將字串當成檔案處理
+        df = pd.read_csv(io.StringIO(content), header=None)
+        # 選擇加上欄位名稱
+        df.columns = ["Label", "Value"]
+        print(filename)
+        print(df)
+
+
+    
+    return {
+        "message": "成功接收資料",
+        "nodes_count": len(node_data),
+        "edges_count": len(edge_data),
+        "csv_files": [f["filename"] for f in csv_contents]
+    }
+
+
+@app.post("/data_analyze/vueflow_data_upload")
+async def upload_file(file: UploadFile = File(...)):
+    try:
+        content = await file.read() # 這是前端二進制資料
+        df = pd.read_csv(io.StringIO(content.decode("utf-8")))
+        # ✅ 清理數據 (例如去除空白、處理 NaN)
+        df = df.dropna().reset_index(drop=True)  # 移除空值並重置索引
+        df.columns = df.columns.str.strip()  # 清除欄位名稱的空白
+        header_list = df.columns.tolist()   # 取得標頭
+        header_list = [header.lower() for header in header_list]    # PostgreSQL 欄位名稱是小寫敏感，除非加上雙引號（"）
+        print(df)
+        column_settings = {}
+        # 建立資料標頭與資料型態對照字典
+        for one_header in header_list:
+            column_settings[one_header.lower()] = "character varying"
+
+        # table_name = f'public."pipeline_{pipeline_id}_process_0"'
+        # DB_function.creat_table(table_name, **column_settings)  # 先建立table
+        
+        # # 將 DataFrame 轉換成 tuples 並使用 execute_values 批次插入
+        # init_data_list = list(df.itertuples(index=False, name=None))
+        # DB_function.DB_batch_insert(table_name, header_list, init_data_list)    # 在插入數據
+        
+        # ✅ 轉換為 JSON 格式
+        json_data = df.to_dict(orient="records")
+        # 這邊設定回傳給前端的資料
+        content = {
+            "message": f"檔案 {file.filename} 上傳成功",
+            "data": json_data  # 傳回清理後的資料
+        }
+
+        return JSONResponse(content=content, status_code=200)
+    except Exception as e:
+        print(e)
         return JSONResponse(content={"message": str(e)}, status_code=500)
