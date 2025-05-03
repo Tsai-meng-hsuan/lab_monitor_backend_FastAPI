@@ -18,6 +18,20 @@ import json
 
 
 def topological_sort(nodes, edges):
+    #     nodes = [
+    #     {"id": "A"},
+    #     {"id": "B"},
+    #     {"id": "C"},
+    #     {"id": "D"}
+    # ]
+
+    # edges = [
+    #     {"source": "A", "target": "B"},
+    #     {"source": "A", "target": "C"},
+    #     {"source": "B", "target": "D"},
+    #     {"source": "C", "target": "D"}
+    # ]
+
     # 建立節點入度與鄰接圖
     in_degree = {}
     graph = {}
@@ -351,17 +365,29 @@ async def upload_data(
     # 將 JSON 字串解析成 Python 物件
     node_data = json.loads(nodes)
     edge_data = json.loads(edges)
+    file_node_id = json.loads(file_node_id)
+
     print("file node ID: ", file_node_id)
+
+    node_topo = []
+    edge_topo = []
     for one_node in node_data:
         print(one_node["data"]["label"])
         print(one_node["type"])
         print(30*"=")
+        temp_dict = {}
+        temp_dict["id"] = one_node["id"]
+        node_topo.append(temp_dict)
     
     for one_edge in edge_data:
         print(one_edge["id"])
         print(one_edge["source"])
         print(one_edge["target"])
         print(30*"=")
+        temp_dict = {}
+        temp_dict["source"] = one_edge["source"]
+        temp_dict["target"] = one_edge["target"]
+        edge_topo.append(temp_dict)
     
     # 處理 CSV 檔案
     csv_contents = []
@@ -372,6 +398,8 @@ async def upload_data(
             "content": content.decode("utf-8")
         })
 
+    # 建立資料對照字典
+    data_file_dict = {}
     for one_csv in csv_contents:
         filename = one_csv["filename"]
         content = one_csv["content"]
@@ -379,17 +407,31 @@ async def upload_data(
         df = pd.read_csv(io.StringIO(content), header=None)
         # 選擇加上欄位名稱
         df.columns = ["Label", "Value"]
-        print(filename)
-        print(df)
+        for one_dict in file_node_id:
+            if filename == one_dict["filename"]:
+                data_file_dict[one_dict["node_id"]] = df
 
-
+    print(data_file_dict)
+    result = topological_sort(node_topo, edge_topo)
+    print(result)
     
-    return {
-        "message": "成功接收資料",
-        "nodes_count": len(node_data),
-        "edges_count": len(edge_data),
-        "csv_files": [f["filename"] for f in csv_contents]
-    }
+    for analyze_node_id in result:
+        node_info = [one_node for one_node in node_data if one_node['id'] == analyze_node_id]
+        # print(node_info)
+        if node_info[0]["type"] == "input":
+            print("input data")
+        elif node_info[0]["type"] == "process":
+            print("do the analyze")
+        elif node_info[0]["type"] == "output":
+            print("output data")
+
+            output_data = data_file_dict
+            return {
+                "message": "成功接收資料",
+                "nodes_count": len(node_data),
+                "edges_count": len(edge_data),
+                "csv_files": [f["filename"] for f in csv_contents]
+            }
 
 
 @app.post("/data_analyze/vueflow_data_upload")
