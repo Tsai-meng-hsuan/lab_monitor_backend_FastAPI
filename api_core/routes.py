@@ -7,7 +7,7 @@ from typing import List, Optional, Annotated
 from fastapi import Query
 from fastapi import File, UploadFile, Form
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from datetime import datetime, timedelta
 from postgreSQL import DB_function
 # from .. import models
@@ -393,6 +393,7 @@ async def upload_data(
     csv_contents = []
     for file in csv_files:
         content = await file.read()
+        # content = file.read()
         csv_contents.append({
             "filename": file.filename,
             "content": content.decode("utf-8")
@@ -406,32 +407,60 @@ async def upload_data(
         # 使用 StringIO 將字串當成檔案處理
         df = pd.read_csv(io.StringIO(content), header=None)
         # 選擇加上欄位名稱
-        df.columns = ["Label", "Value"]
+        df.columns = ["time", "value"]
         for one_dict in file_node_id:
             if filename == one_dict["filename"]:
                 data_file_dict[one_dict["node_id"]] = df
 
-    print(data_file_dict)
     result = topological_sort(node_topo, edge_topo)
-    print(result)
+    print("這是排序後的node ID: ", result)
     
-    for analyze_node_id in result:
-        node_info = [one_node for one_node in node_data if one_node['id'] == analyze_node_id]
-        # print(node_info)
-        if node_info[0]["type"] == "input":
-            print("input data")
-        elif node_info[0]["type"] == "process":
-            print("do the analyze")
-        elif node_info[0]["type"] == "output":
-            print("output data")
+    # ✅ 這裡定義 generator，用來一筆筆傳資料
+    def event_stream():
+        # analyze_node_id 是目前分析的一個節點位置
+        for analyze_node_id in result:
+            # 找到node_info了解節點的工作項目
+            node_info = [one_node for one_node in node_data if one_node['id'] == analyze_node_id]
+            # 找到edge_info了解資料輸入來源
+            edge_info = [one_edge for one_edge in edge_data if one_edge["target"] == analyze_node_id]
+            # print("這是node的內部資訊: ", node_info)
+            # print("這是edge的內部資訊: ", edge_info)
+            # print(30*"=")
+            
+            if node_info[0]["type"] == "input":
+                print("input data")
+                # 先前已經先建置好資料了，所以這裡不做更新
+                message = {
+                    "message": "接收到輸入資料",
+                    "node_id": analyze_node_id,
+                    "node_name": node_info[0]["data"]["label"],
+                    "output_data": None
+                }
+                yield f"data: {json.dumps(message)}\n\n"
+                
+            elif node_info[0]["type"] == "process":
+                print("do the analyze")
 
-            output_data = data_file_dict
-            return {
-                "message": "成功接收資料",
-                "nodes_count": len(node_data),
-                "edges_count": len(edge_data),
-                "csv_files": [f["filename"] for f in csv_contents]
-            }
+            elif node_info[0]["type"] == "output":
+                print("output data")
+                # 依據edge資訊，抓取上一個節點的資料，把資料加入data_file_dict中
+                source_node_id = edge_info[0]["source"]
+                output_data = data_file_dict[source_node_id]
+                output_data = output_data.to_dict(orient="records")  # 傳成 list of dicts
+                
+                print(analyze_node_id)
+                print(node_info)
+                # print(node_info[0]["data"]["label"])
+                print(output_data)
+                message = {
+                    "message": "輸出資料準備完成",
+                    "node_id": analyze_node_id,
+                    "node_name": node_info[0]["data"]["label"],
+                    "output_data": output_data
+                }
+                yield f"data: {json.dumps(message)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.post("/data_analyze/vueflow_data_upload")
